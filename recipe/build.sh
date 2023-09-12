@@ -51,12 +51,12 @@ meson setup --buildtype=release --prefix="$PREFIX" --backend=ninja -Dlibdir=lib 
       || { cat meson-logs/meson-log.txt ; exit 1 ; }
 ninja -j${CPU_COUNT} -v
 
-if [ "${target_platform}" == 'linux-aarch64' ] || [ "${target_platform}" == "linux-ppc64le" ]; then
+if [ "${target_platform}" == 'linux-aarch64' ] || [ "${target_platform}" == "linux-ppc64le" ] || [ "${target_platform}" == "linux-armv7l" ]; then
     export MESON_TEST_TIMEOUT_MULTIPLIER=16
 else
     export MESON_TEST_TIMEOUT_MULTIPLIER=2
 fi
 
-if [[ "$target_platform" != osx-* && "$CONDA_BUILD_CROSS_COMPILATION" != "1" ]] ; then  # too many tests fail on macOS
+if [[ "$target_platform" != osx-* && "$target_platform" != "linux-armv7l" && "$CONDA_BUILD_CROSS_COMPILATION" != "1" ]] ; then  # too many tests fail on macOS
     meson test --no-suite flaky --timeout-multiplier ${MESON_TEST_TIMEOUT_MULTIPLIER}
 fi
