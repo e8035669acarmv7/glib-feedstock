@@ -1,4 +1,4 @@
-{% set version = "2.78.0" %}
+{% set version = "2.80.2" %}
 {% set major_minor = ".".join(version.split(".")[:2]) %}
 {% set posix = 'm2-' if win else '' %}
 {% set native = 'm2w64-' if win else '' %}
@@ -9,7 +9,7 @@ package:
 
 source:
   url: https://download.gnome.org/sources/glib/{{ major_minor }}/glib-{{ version }}.tar.xz
-  sha256: 44eaab8b720877ce303c5540b657b126f12dc94972d9880b52959f43fb537b30
+  sha256: b9cfb6f7a5bd5b31238fd5d56df226b2dda5ea37611475bf89f6a0f9400fe8bd
   patches:
     # Related to this patch https://bugzilla.gnome.org/show_bug.cgi?id=673135
     # However, it was rejected by upstream. Homebrew decided to keep their own
@@ -29,24 +29,31 @@ source:
     - 0002-Increase-some-test-timeouts.patch                          # [win]
 
 build:
-  number: 0
+  number: 1
   ignore_run_exports_from:
     - python *
 
 requirements:
   build:
-    - gettext  # [osx and arm64]
+    - gettext-tools
     - {{ posix }}patch  # [win]
     - meson
     - ninja
     - {{ native }}pkg-config
     - {{ compiler('c') }}
+    - {{ stdlib("c") }}
     - {{ compiler('cxx') }}
     - python >=2.7
+    - packaging
     - setuptools
+    - libffi         # [build_platform != target_platfrom]
+    - libintl-devel  # [(build_platform != target_platform) and (not linux)]
+    - zlib           # [build_platform != target_platfrom]
+    - pcre2          # [build_platform != target_platfrom]
+    - libiconv       # [build_platform != target_platfrom]
   host:
     - libffi
-    - gettext
+    - libintl-devel  # [not linux]
     - zlib
     - pcre2
     - libiconv
@@ -60,22 +67,26 @@ outputs:
     build:
       ignore_run_exports_from:
         - python *
+        - {{ compiler('cxx') }}  # [unix]
       run_exports:
         - {{ pin_subpackage("libglib") }}
     requirements:
       build:
+        - gettext-tools
         - {{ posix }}patch  # [win]
         - meson
         - ninja
         - {{ native }}pkg-config
         - {{ compiler('c') }}
+        - {{ stdlib("c") }}
         - {{ compiler('cxx') }}
         - ninja
         - python >=2.7
+        - packaging
         - setuptools
       host:
         - libffi
-        - gettext
+        - libintl-devel  # [not linux]
         - zlib
         - pcre2
         - libiconv
@@ -91,25 +102,38 @@ outputs:
         - test -f ${PREFIX}/lib/pkgconfig/glib-2.0.pc  # [unix]
         - test -f ${PREFIX}/etc/conda/activate.d/libglib_activate.sh  # [not win]
         - test -f ${PREFIX}/etc/conda/deactivate.d/libglib_deactivate.sh  # [not win]
+        # Introspection data is needed at runtime
+        - test -f ${PREFIX}/share/gir-1.0/GLib-2.0.gir              # [unix]
+        - test -f ${PREFIX}/lib/girepository-1.0/GLib-2.0.typelib   # [unix]
+        - if not exist %LIBRARY_PREFIX%\share\gir-1.0\GLib-2.0.gir exit 1             # [win]
+        - if not exist %LIBRARY_PREFIX%\lib\girepository-1.0\GLib-2.0.typelib exit 1  # [win]
   - name: glib-tools
     script: install.sh  # [unix]
     script: install.bat  # [not unix]
     build:
       ignore_run_exports_from:
         - python *
+        - {{ compiler('cxx') }}  # [unix]
+        - libiconv
+        - zlib
     requirements:
       build:
+        - gettext-tools
         - {{ posix }}patch  # [win]
         - meson
         - ninja
         - {{ native }}pkg-config
         - {{ compiler('c') }}
+        - {{ stdlib("c") }}
         - {{ compiler('cxx') }}
         - ninja
         - python >=2.7
+        - packaging
         - setuptools
       host:
         - {{ pin_subpackage("libglib", exact=True) }}
+        - libintl-devel  # [not linux]
+        - libiconv
         - zlib
       run:
         - {{ pin_subpackage("libglib", exact=True) }}
@@ -128,34 +152,58 @@ outputs:
     build:
       ignore_run_exports_from:
         - python *
+        - {{ compiler('cxx') }}  # [unix]
+        - libiconv
+        - pcre2
+        - zlib
+        - m2-sed  # [win]
+      ignore_run_exports:
+        # This is intentional to workaround conda-build's overdependening checks.
+        - libintl-devel
       run_exports:
         - {{ pin_subpackage("libglib") }}
     requirements:
       build:
+        - gettext-tools
         - {{ posix }}patch  # [win]
         - meson
         - ninja
         - {{ native }}pkg-config
         - {{ compiler('c') }}
+        - {{ stdlib("c") }}
         - {{ compiler('cxx') }}
         - ninja
         - python >=2.7
+        - packaging
         - setuptools
       host:
         - {{ pin_subpackage("libglib", exact=True) }}
         - {{ pin_subpackage("glib-tools", exact=True) }}
-        - gettext
+        - libintl-devel  # [not linux]
+        - libffi
+        - libiconv
+        - pcre2
         - zlib
       run:
         - python *
         - {{ pin_subpackage("libglib", exact=True) }}
         - {{ pin_subpackage("glib-tools", exact=True) }}
+        # glib headers depend on libintl headers
+        - libintl-devel  # [not linux]
     test:
+      requires:
+        - {{ compiler('c') }}
+        - pkg-config
+      files:
+        - test.c
+        - test-win.bat
       commands:
-        - test -f ${PREFIX}/lib/libglib-2.0${SHLIB_EXT}  # [not win]
+        - test -f ${PREFIX}/lib/libglib-2.0${SHLIB_EXT}             # [unix]
         - glib-compile-resources --help
         - gobject-query --help
         - gtester --help  # [not win]
+        - ${CC} ${LDFLAGS} ${CFLAGS} test.c $(pkg-config --cflags --libs glib-2.0) -o test-glib && ./test-glib  # [unix]
+        - test-win.bat  # [win]
 
 about:
   home: https://developer.gnome.org/glib/
